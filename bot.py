@@ -13,15 +13,20 @@ from aiogram.filters import CommandStart
 from yt_dlp import YoutubeDL
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
-# Bot configuration
+# ✅ Check env vars
 API_TOKEN = os.getenv("BOT_TOKEN")
+DOMAIN = os.getenv("WEBHOOK_URL")  # Make sure this is set in Render Dashboard
+
+if not API_TOKEN or not DOMAIN:
+    raise RuntimeError("BOT_TOKEN or WEBHOOK_URL is not set in environment variables!")
+
 WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = os.getenv("WEBHOOK_URL") + WEBHOOK_PATH
+WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
-# FSM States
+# States
 class States(StatesGroup):
     choosing_language = State()
     ready = State()
@@ -60,7 +65,6 @@ translations = {
     }
 }
 
-# Start command
 @dp.message(CommandStart())
 async def start(message: types.Message, state: FSMContext):
     kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -71,7 +75,6 @@ async def start(message: types.Message, state: FSMContext):
     await state.set_state(States.choosing_language)
     await message.answer(translations["choose_language"]["en"], reply_markup=kb)
 
-# Handle language selection
 @dp.callback_query(F.data.startswith("lang_"))
 async def set_language(callback: CallbackQuery, state: FSMContext):
     lang = callback.data.split("_")[1]
@@ -81,7 +84,6 @@ async def set_language(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(translations["send_link"][lang])
     await callback.answer()
 
-# Handle YouTube link
 @dp.message(States.ready)
 async def process_link(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -103,11 +105,9 @@ async def process_link(message: types.Message, state: FSMContext):
         await message.answer(translations["error"][lang].format(str(e)))
         logging.exception("Download error")
 
-# Custom error
 class FileTooBigError(Exception):
     pass
 
-# Downloader
 async def download_and_send_mp3(message: types.Message, url: str, lang: str):
     base_dir = "downloads"
     uid = str(uuid.uuid4())
@@ -145,7 +145,7 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str):
     if not os.path.exists(mp3_path):
         raise Exception("MP3 not found")
 
-    max_size = 50 * 1024 * 1024  # 50MB
+    max_size = 50 * 1024 * 1024
     if os.path.getsize(mp3_path) > max_size:
         raise FileTooBigError()
 
