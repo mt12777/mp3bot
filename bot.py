@@ -4,23 +4,29 @@ import logging
 import uuid
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from yt_dlp import YoutubeDL
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.filters import CommandStart
+from yt_dlp import YoutubeDL
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
-API_TOKEN = "8042598400:AAE46nuEhOLFVA-I4DqUrKIIW-hd7Q1B5v8"
+# Bot configuration
+API_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_PATH = "/webhook"
+WEBHOOK_URL = os.getenv("WEBHOOK_URL") + WEBHOOK_PATH
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
+# FSM States
 class States(StatesGroup):
     choosing_language = State()
     ready = State()
 
+# Translations
 translations = {
     "choose_language": {
         "en": "Please choose your language.",
@@ -54,6 +60,7 @@ translations = {
     }
 }
 
+# Start command
 @dp.message(CommandStart())
 async def start(message: types.Message, state: FSMContext):
     kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -64,6 +71,7 @@ async def start(message: types.Message, state: FSMContext):
     await state.set_state(States.choosing_language)
     await message.answer(translations["choose_language"]["en"], reply_markup=kb)
 
+# Handle language selection
 @dp.callback_query(F.data.startswith("lang_"))
 async def set_language(callback: CallbackQuery, state: FSMContext):
     lang = callback.data.split("_")[1]
@@ -73,6 +81,7 @@ async def set_language(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(translations["send_link"][lang])
     await callback.answer()
 
+# Handle YouTube link
 @dp.message(States.ready)
 async def process_link(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -94,9 +103,11 @@ async def process_link(message: types.Message, state: FSMContext):
         await message.answer(translations["error"][lang].format(str(e)))
         logging.exception("Download error")
 
+# Custom error
 class FileTooBigError(Exception):
     pass
 
+# Downloader
 async def download_and_send_mp3(message: types.Message, url: str, lang: str):
     base_dir = "downloads"
     uid = str(uuid.uuid4())
@@ -134,8 +145,7 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str):
     if not os.path.exists(mp3_path):
         raise Exception("MP3 not found")
 
-    # 📦 Սահմանափակիր Telegram-ի սահմանը (bots → 50MB)
-    max_size = 50 * 1024 * 1024
+    max_size = 50 * 1024 * 1024  # 50MB
     if os.path.getsize(mp3_path) > max_size:
         raise FileTooBigError()
 
@@ -150,7 +160,6 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str):
         thumbnail=thumb
     )
 
-    # 🧹 Մաքրում
     try:
         os.remove(mp3_path)
         if os.path.exists(thumb_path):
@@ -159,7 +168,20 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str):
     except Exception:
         pass
 
+# Webhook setup
+async def on_startup(app):
+    await bot.set_webhook(WEBHOOK_URL)
+
+async def on_shutdown(app):
+    await bot.delete_webhook()
+
+app = web.Application()
+app.on_startup.append(on_startup)
+app.on_shutdown.append(on_shutdown)
+
+SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
+setup_application(app, dp, bot=bot)
+
 if __name__ == "__main__":
-    import logging
     logging.basicConfig(level=logging.INFO)
     web.run_app(app, port=int(os.getenv("PORT", 8000)))
