@@ -114,11 +114,16 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str):
     download_dir = os.path.join(base_dir, uid)
     os.makedirs(download_dir, exist_ok=True)
 
+    cookies_path = "cookies.txt"
+    if not os.path.exists(cookies_path):
+        raise Exception("cookies.txt not found. Please upload your YouTube cookies.")
+
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": os.path.join(download_dir, "%(title)s.%(ext)s"),
         "quiet": True,
         "noplaylist": True,
+        "cookiefile": cookies_path,
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
