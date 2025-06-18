@@ -159,5 +159,6 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str):
         pass
 
 if __name__ == "__main__":
+    import logging
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(dp.start_polling(bot))
+    web.run_app(app, port=int(os.getenv("PORT", 8000)))
