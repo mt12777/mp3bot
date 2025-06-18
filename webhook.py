@@ -27,5 +27,14 @@ app.on_shutdown.append(on_shutdown)
 
 setup_application(app, dp, path=WEBHOOK_PATH)
 
+app = web.Application()
+app.on_startup.append(on_startup)
+app.on_shutdown.append(on_shutdown)
+
+SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
+setup_application(app, dp, bot=bot)
+
 if __name__ == "__main__":
-    web.run_app(app, port=10000)  # Render-ը ակնկալում է որ պորտ կբացվի
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    web.run_app(app, port=int(os.getenv("PORT", 8000)))
