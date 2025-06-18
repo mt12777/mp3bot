@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 import uuid
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.enums import ParseMode
