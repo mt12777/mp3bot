@@ -13,8 +13,9 @@ from aiogram.filters import CommandStart
 from yt_dlp import YoutubeDL
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
+# ✅ Check env vars
 API_TOKEN = os.getenv("BOT_TOKEN")
-DOMAIN = os.getenv("WEBHOOK_URL")
+DOMAIN = os.getenv("WEBHOOK_URL")  # Make sure this is set in Render Dashboard
 
 if not API_TOKEN or not DOMAIN:
     raise RuntimeError("BOT_TOKEN or WEBHOOK_URL is not set in environment variables!")
@@ -25,10 +26,12 @@ WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
+# States
 class States(StatesGroup):
     choosing_language = State()
     ready = State()
 
+# Translations
 translations = {
     "choose_language": {
         "en": "Please choose your language.",
@@ -44,11 +47,6 @@ translations = {
         "en": "⏳ Downloading and processing...",
         "hy": "⏳ Ներբեռնում և մշակում...",
         "ru": "⏳ Загрузка и обработка...",
-    },
-    "progress": {
-        "en": "⬛" * 0 + "⬜" * 5 + " 0%",
-        "hy": "⬛" * 0 + "⬜" * 5 + " 0%",
-        "ru": "⬛" * 0 + "⬜" * 5 + " 0%",
     },
     "finished": {
         "en": "✅ Download finished.",
@@ -69,19 +67,13 @@ translations = {
 
 @dp.message(CommandStart())
 async def start(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang")
-    if lang:
-        await state.set_state(States.ready)
-        await message.answer(translations["send_link"][lang])
-    else:
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="Հայ 🇦🇲", callback_data="lang_hy"),
-            InlineKeyboardButton(text="Рус 🇷🇺", callback_data="lang_ru"),
-            InlineKeyboardButton(text="Eng 🇬🇧", callback_data="lang_en"),
-        ]])
-        await state.set_state(States.choosing_language)
-        await message.answer(translations["choose_language"]["en"], reply_markup=kb)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Հայ 🇦🇲", callback_data="lang_hy"),
+        InlineKeyboardButton(text="Рус 🇷🇺", callback_data="lang_ru"),
+        InlineKeyboardButton(text="Eng 🇬🇧", callback_data="lang_en"),
+    ]])
+    await state.set_state(States.choosing_language)
+    await message.answer(translations["choose_language"]["en"], reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("lang_"))
 async def set_language(callback: CallbackQuery, state: FSMContext):
@@ -102,10 +94,10 @@ async def process_link(message: types.Message, state: FSMContext):
         await message.answer("Invalid link.")
         return
 
-    progress_msg = await message.answer(translations["downloading"][lang])
+    await message.answer(translations["downloading"][lang])
 
     try:
-        await download_and_send_mp3(message, url, lang, progress_msg)
+        await download_and_send_mp3(message, url, lang)
         await message.answer(translations["finished"][lang])
     except FileTooBigError:
         await message.answer(translations["file_too_big"][lang])
@@ -116,7 +108,7 @@ async def process_link(message: types.Message, state: FSMContext):
 class FileTooBigError(Exception):
     pass
 
-async def download_and_send_mp3(message: types.Message, url: str, lang: str, progress_message: types.Message):
+async def download_and_send_mp3(message: types.Message, url: str, lang: str):
     base_dir = "downloads"
     uid = str(uuid.uuid4())
     download_dir = os.path.join(base_dir, uid)
@@ -126,22 +118,8 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str, pro
     if not os.path.exists(cookies_path):
         raise Exception("cookies.txt not found. Please upload your YouTube cookies.")
 
-    # Progress bar helper function
-    def progress_hook(d):
-        if d['status'] == 'downloading':
-            total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate')
-            downloaded_bytes = d.get('downloaded_bytes', 0)
-            if total_bytes:
-                percent = downloaded_bytes / total_bytes
-                blocks = int(percent * 5)
-                blocks = min(blocks, 5)
-                bar = "⬛" * blocks + "⬜" * (5 - blocks)
-                percent_text = int(percent * 100)
-                text = f"{bar} {percent_text}%"
-                asyncio.run_coroutine_threadsafe(progress_message.edit_text(text), bot.loop)
-
     ydl_opts = {
-        "format": "bestaudio[ext=m4a]/bestaudio/best",
+        "format": "bestaudio/best",
         "outtmpl": os.path.join(download_dir, "%(title)s.%(ext)s"),
         "quiet": True,
         "noplaylist": True,
@@ -158,8 +136,7 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str, pro
             "-metadata:s:v", "comment=Cover (front)"
         ],
         "prefer_ffmpeg": True,
-        "geo_bypass": True,
-        "progress_hooks": [progress_hook]
+        "geo_bypass": True
     }
 
     loop = asyncio.get_event_loop()
@@ -173,7 +150,8 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str, pro
     if not os.path.exists(mp3_path):
         raise Exception("MP3 not found")
 
-    if os.path.getsize(mp3_path) > 50 * 1024 * 1024:
+    max_size = 50 * 1024 * 1024
+    if os.path.getsize(mp3_path) > max_size:
         raise FileTooBigError()
 
     audio = FSInputFile(mp3_path)
