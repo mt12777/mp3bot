@@ -1,8 +1,7 @@
 import os
-import time
 import uuid
-import logging
 import asyncio
+import logging
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
@@ -16,10 +15,10 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from yt_dlp import YoutubeDL
 
 API_TOKEN = os.getenv("BOT_TOKEN")
-DOMAIN = os.getenv("WEBHOOK_URL")  # Render dashboard → Environment → WEBHOOK_URL=https://xxx.onrender.com
+DOMAIN = os.getenv("WEBHOOK_URL")
 
 if not API_TOKEN or not DOMAIN:
-    raise RuntimeError("BOT_TOKEN or WEBHOOK_URL not set in environment!")
+    raise RuntimeError("BOT_TOKEN or WEBHOOK_URL missing!")
 
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
@@ -43,14 +42,14 @@ translations = {
         "ru": "Отправьте ссылку на YouTube.",
     },
     "downloading": {
-        "en": "⏳ Downloading and processing...",
-        "hy": "⏳ Ներբեռնում և մշակում...",
-        "ru": "⏳ Загрузка и обработка...",
+        "en": "⏳ Downloading...",
+        "hy": "⏳ Ներբեռնում...",
+        "ru": "⏳ Загрузка...",
     },
     "finished": {
-        "en": "✅ Download finished.",
-        "hy": "✅ Ներբեռնումը ավարտված է։",
-        "ru": "✅ Загрузка завершена.",
+        "en": "✅ Sent.",
+        "hy": "✅ Ուղարկված է։",
+        "ru": "✅ Отправлено.",
     },
     "error": {
         "en": "❌ Error: {}",
@@ -58,9 +57,9 @@ translations = {
         "ru": "❌ Ошибка: {}",
     },
     "file_too_big": {
-        "en": "❌ File too big for Telegram (~50MB limit).",
-        "hy": "❌ Ֆայլը մեծ է Telegram-ի համար (~50ՄԲ սահման)։",
-        "ru": "❌ Файл слишком большой для Telegram (~50MB лимит).",
+        "en": "❌ File too big for Telegram.",
+        "hy": "❌ Ֆայլը մեծ է Telegram-ի համար։",
+        "ru": "❌ Файл слишком большой.",
     }
 }
 
@@ -93,10 +92,10 @@ async def process_link(message: types.Message, state: FSMContext):
         await message.answer("Invalid link.")
         return
 
-    progress_msg = await message.answer(translations["downloading"][lang])
+    await message.answer(translations["downloading"][lang])
 
     try:
-        await download_and_send_mp3(message, url, lang, progress_msg)
+        await download_and_send_mp3(message, url, lang)
         await message.answer(translations["finished"][lang])
     except FileTooBigError:
         await message.answer(translations["file_too_big"][lang])
@@ -107,38 +106,7 @@ async def process_link(message: types.Message, state: FSMContext):
 class FileTooBigError(Exception):
     pass
 
-def make_progress_hook(msg: types.Message):
-    last = {"time": time.time()}
-
-    async def update_progress(text: str):
-        try:
-            await msg.edit_text(text)
-        except:
-            pass
-
-    def hook(d):
-        if d['status'] != 'downloading':
-            return
-
-        total = d.get("total_bytes") or d.get("total_bytes_estimate")
-        downloaded = d.get("downloaded_bytes", 0)
-
-        if not total:
-            return
-
-        percent = int(downloaded / total * 100)
-        blocks = int(percent / 20)
-        bar = "⬛" * blocks + "⬜" * (5 - blocks)
-        text = f"{bar} {percent}%"
-
-        now = time.time()
-        if now - last["time"] >= 1:
-            last["time"] = now
-            asyncio.create_task(update_progress(text))
-
-    return hook
-
-async def download_and_send_mp3(message: types.Message, url: str, lang: str, progress_msg: types.Message):
+async def download_and_send_mp3(message: types.Message, url: str, lang: str):
     base_dir = "downloads"
     uid = str(uuid.uuid4())
     download_dir = os.path.join(base_dir, uid)
@@ -155,8 +123,6 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str, pro
         "noplaylist": True,
         "cookiefile": cookies_path,
         "writethumbnail": True,
-        "cachedir": False,
-        "progress_hooks": [make_progress_hook(progress_msg)],
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
@@ -204,13 +170,14 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str, pro
     except:
         pass
 
-# --- Webhook Setup ---
+# Webhook Setup
 async def on_startup(app): await bot.set_webhook(WEBHOOK_URL)
 async def on_shutdown(app): await bot.delete_webhook()
 
 app = web.Application()
 app.on_startup.append(on_startup)
 app.on_shutdown.append(on_shutdown)
+
 SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
 setup_application(app, dp, bot=bot)
 
