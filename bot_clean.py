@@ -1,34 +1,30 @@
 import os
-import uuid
 import asyncio
 import logging
+import uuid
 from aiohttp import web
-from aiogram import Bot, Dispatcher, F, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from yt_dlp import YoutubeDL
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 DOMAIN = os.getenv("WEBHOOK_URL")
 
 if not API_TOKEN or not DOMAIN:
-    raise RuntimeError("BOT_TOKEN or WEBHOOK_URL missing!")
+    raise RuntimeError("BOT_TOKEN or WEBHOOK_URL not set")
 
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-dp = Dispatcher(storage=MemoryStorage())
+dp = Dispatcher()
 
-class States(StatesGroup):
-    choosing_language = State()
-    ready = State()
+# Լեզվի հիշողություն ըստ user_id
+user_languages = {}
 
 translations = {
     "choose_language": {
@@ -57,43 +53,42 @@ translations = {
         "ru": "❌ Ошибка: {}",
     },
     "file_too_big": {
-        "en": "❌ File too big for Telegram.",
-        "hy": "❌ Ֆայլը մեծ է Telegram-ի համար։",
-        "ru": "❌ Файл слишком большой.",
+        "en": "❌ File is too big (50MB limit).",
+        "hy": "❌ Ֆայլը մեծ է (50ՄԲ սահման)։",
+        "ru": "❌ Файл слишком большой (лимит 50MB).",
     }
 }
 
 @dp.message(CommandStart())
-async def start(message: types.Message, state: FSMContext):
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Հայ 🇦🇲", callback_data="lang_hy"),
-        InlineKeyboardButton(text="Рус 🇷🇺", callback_data="lang_ru"),
-        InlineKeyboardButton(text="Eng 🇬🇧", callback_data="lang_en"),
-    ]])
-    await state.set_state(States.choosing_language)
+async def start(message: types.Message):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Հայ 🇦🇲", callback_data="lang_hy"),
+            InlineKeyboardButton(text="Рус 🇷🇺", callback_data="lang_ru"),
+            InlineKeyboardButton(text="Eng 🇬🇧", callback_data="lang_en"),
+        ]
+    ])
     await message.answer(translations["choose_language"]["en"], reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("lang_"))
-async def set_language(callback: CallbackQuery, state: FSMContext):
+async def choose_lang(callback: types.CallbackQuery):
     lang = callback.data.split("_")[1]
-    await state.update_data(lang=lang)
-    await state.set_state(States.ready)
+    user_languages[callback.from_user.id] = lang
     await callback.message.edit_reply_markup()
     await callback.message.answer(translations["send_link"][lang])
     await callback.answer()
 
-@dp.message(States.ready)
-async def process_link(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "en")
+@dp.message()
+async def handle_link(message: types.Message):
+    user_id = message.from_user.id
+    lang = user_languages.get(user_id, "en")
     url = message.text.strip()
 
     if not url.startswith("http"):
-        await message.answer("Invalid link.")
+        await message.answer("❌ Invalid link.")
         return
 
     await message.answer(translations["downloading"][lang])
-
     try:
         await download_and_send_mp3(message, url, lang)
         await message.answer(translations["finished"][lang])
@@ -114,7 +109,7 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str):
 
     cookies_path = "cookies.txt"
     if not os.path.exists(cookies_path):
-        raise Exception("cookies.txt not found!")
+        raise Exception("cookies.txt missing")
 
     ydl_opts = {
         "format": "bestaudio/best",
@@ -122,17 +117,11 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str):
         "quiet": True,
         "noplaylist": True,
         "cookiefile": cookies_path,
-        "writethumbnail": True,
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
-            "preferredquality": "192",
+            "preferredquality": "128",
         }],
-        "postprocessor_args": [
-            "-id3v2_version", "3",
-            "-metadata:s:v", "title=Album cover",
-            "-metadata:s:v", "comment=Cover (front)"
-        ],
         "prefer_ffmpeg": True,
         "geo_bypass": True
     }
@@ -141,10 +130,7 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str):
     with YoutubeDL(ydl_opts) as ydl:
         info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
 
-    base_filename = ydl.prepare_filename(info)
-    mp3_path = os.path.splitext(base_filename)[0] + ".mp3"
-    thumb_path = os.path.splitext(base_filename)[0] + ".webp"
-
+    mp3_path = os.path.splitext(ydl.prepare_filename(info))[0] + ".mp3"
     if not os.path.exists(mp3_path):
         raise Exception("MP3 not found")
 
@@ -152,32 +138,29 @@ async def download_and_send_mp3(message: types.Message, url: str, lang: str):
         raise FileTooBigError()
 
     audio = FSInputFile(mp3_path)
-    thumb = FSInputFile(thumb_path) if os.path.exists(thumb_path) else None
-
     await message.answer_audio(
         audio=audio,
-        title=info.get("title", "Audio"),
+        title=info.get("title"),
         performer=info.get("uploader", ""),
-        duration=info.get("duration"),
-        thumbnail=thumb
+        duration=info.get("duration")
     )
 
     try:
         os.remove(mp3_path)
-        if os.path.exists(thumb_path):
-            os.remove(thumb_path)
         os.rmdir(download_dir)
-    except:
+    except Exception:
         pass
 
-# Webhook Setup
-async def on_startup(app): await bot.set_webhook(WEBHOOK_URL)
-async def on_shutdown(app): await bot.delete_webhook()
+# Webhook setup
+async def on_startup(app):
+    await bot.set_webhook(WEBHOOK_URL)
+
+async def on_shutdown(app):
+    await bot.delete_webhook()
 
 app = web.Application()
 app.on_startup.append(on_startup)
 app.on_shutdown.append(on_shutdown)
-
 SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
 setup_application(app, dp, bot=bot)
 
