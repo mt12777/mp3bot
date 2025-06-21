@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command, CallbackQueryData
+from aiogram.filters import Command
 from yt_dlp import YoutubeDL
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
@@ -22,7 +22,6 @@ WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
-# Մտածված լեզուներ՝ օգտատիրոջ համար
 user_lang = {}
 
 translations = {
@@ -126,7 +125,6 @@ async def download_audio(url: str) -> str:
     mp3_path = os.path.splitext(ydl.prepare_filename(info))[0] + ".mp3"
     return mp3_path
 
-# Webhook handlers
 async def on_startup(app):
     await bot.set_webhook(WEBHOOK_URL)
 
