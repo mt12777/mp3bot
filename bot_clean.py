@@ -3,7 +3,7 @@ import uuid
 import asyncio
 import logging
 from aiohttp import web
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
@@ -66,7 +66,7 @@ async def start(message: types.Message):
     ]])
     await message.answer(translations["choose"]["en"], reply_markup=kb)
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("lang_"))
+@dp.callback_query(F.data.startswith("lang_"))
 async def set_language(callback: types.CallbackQuery):
     lang = callback.data.split("_")[1]
     user_lang[callback.from_user.id] = lang
@@ -87,21 +87,26 @@ async def process_link(message: types.Message):
     await message.answer(translations["downloading"][lang])
 
     try:
-        mp3_path = await download_audio(url)
+        mp3_path, title, performer, duration = await download_audio(url)
         if os.path.getsize(mp3_path) > 50 * 1024 * 1024:
             await message.answer(translations["file_too_big"][lang])
             os.remove(mp3_path)
             return
 
         audio = FSInputFile(mp3_path)
-        await message.answer_audio(audio)
+        await message.answer_audio(
+            audio=audio,
+            title=title,
+            performer=performer,
+            duration=duration,
+        )
         await message.answer(translations["done"][lang])
         os.remove(mp3_path)
     except Exception as e:
         logging.exception("Download error")
         await message.answer(translations["error"][lang].format(str(e)))
 
-async def download_audio(url: str) -> str:
+async def download_audio(url: str):
     uid = str(uuid.uuid4())
     download_dir = os.path.join("downloads", uid)
     os.makedirs(download_dir, exist_ok=True)
@@ -118,12 +123,20 @@ async def download_audio(url: str) -> str:
         }],
     }
 
-    loop = asyncio.get_event_loop()
-    with YoutubeDL(ydl_opts) as ydl:
-        info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
+    def run_ydl():
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            return info
 
-    mp3_path = os.path.splitext(ydl.prepare_filename(info))[0] + ".mp3"
-    return mp3_path
+    loop = asyncio.get_event_loop()
+    info = await loop.run_in_executor(None, run_ydl)
+
+    mp3_path = os.path.splitext(ydl_opts["outtmpl"] % info)[0] + ".mp3"
+    title = info.get("title", "Audio")
+    performer = info.get("uploader", "")
+    duration = info.get("duration", 0)
+
+    return mp3_path, title, performer, duration
 
 async def on_startup(app):
     await bot.set_webhook(WEBHOOK_URL)
