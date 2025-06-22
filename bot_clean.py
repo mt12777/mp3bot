@@ -57,6 +57,8 @@ translations = {
     },
 }
 
+COOKIES_PATH = "C:\Users\Admin\OneDrive\Рабочий стол\youtube_bot"  # <-- այստեղ դնես քո cookies.txt-ի լիակատար ճանապարհը
+
 @dp.message(Command(commands=["start"]))
 async def start(message: types.Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -84,7 +86,6 @@ async def process_link(message: types.Message):
         await message.answer("❌ Invalid link.")
         return
 
-    # Հատուկ YouTube հղումների ստուգում
     if "youtube.com" not in url and "youtu.be" not in url:
         await message.answer("❌ This bot supports only YouTube links.")
         return
@@ -112,6 +113,9 @@ async def process_link(message: types.Message):
         await message.answer(translations["error"][lang].format(str(e)))
 
 async def download_audio(url: str):
+    print("Checking cookies.txt path:", COOKIES_PATH)
+    print("Cookies file exists:", os.path.exists(COOKIES_PATH))
+
     uid = str(uuid.uuid4())
     download_dir = os.path.join("downloads", uid)
     os.makedirs(download_dir, exist_ok=True)
@@ -121,7 +125,7 @@ async def download_audio(url: str):
         "outtmpl": os.path.join(download_dir, "%(title)s.%(ext)s"),
         "quiet": True,
         "noplaylist": True,
-        "cookies": "cookies.txt",  # Կարևոր՝ cookies աջակցություն
+        "cookies": COOKIES_PATH,
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
