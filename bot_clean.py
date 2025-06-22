@@ -57,7 +57,7 @@ translations = {
     },
 }
 
-COOKIES_PATH = "C:\Users\Admin\OneDrive\Рабочий стол\youtube_bot"  # <-- այստեղ դնես քո cookies.txt-ի լիակատար ճանապարհը
+COOKIES_PATH = COOKIES_PATH = r"C:\Users\Admin\OneDrive\Рабочий стол\youtube_bot\cookies.txt"  # <-- այստեղ դնես քո cookies.txt-ի լիակատար ճանապարհը
 
 @dp.message(Command(commands=["start"]))
 async def start(message: types.Message):
