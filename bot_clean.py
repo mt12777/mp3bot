@@ -84,6 +84,11 @@ async def process_link(message: types.Message):
         await message.answer("❌ Invalid link.")
         return
 
+    # Հատուկ YouTube հղումների ստուգում
+    if "youtube.com" not in url and "youtu.be" not in url:
+        await message.answer("❌ This bot supports only YouTube links.")
+        return
+
     await message.answer(translations["downloading"][lang])
 
     try:
@@ -116,7 +121,7 @@ async def download_audio(url: str):
         "outtmpl": os.path.join(download_dir, "%(title)s.%(ext)s"),
         "quiet": True,
         "noplaylist": True,
-        "cookies": "cookies.txt",  # ✅ ԱՅՍՏԵՂ ԱՎԵԼԱՑՎԱԾ Է
+        "cookies": "cookies.txt",  # Կարևոր՝ cookies աջակցություն
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
