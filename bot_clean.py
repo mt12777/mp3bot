@@ -116,6 +116,7 @@ async def download_audio(url: str):
         "outtmpl": os.path.join(download_dir, "%(title)s.%(ext)s"),
         "quiet": True,
         "noplaylist": True,
+        "cookies": "cookies.txt",  # ✅ ԱՅՍՏԵՂ ԱՎԵԼԱՑՎԱԾ Է
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
