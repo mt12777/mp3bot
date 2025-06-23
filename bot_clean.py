@@ -82,11 +82,7 @@ async def process_link(message: types.Message):
     lang = user_lang.get(uid, "en")
     url = message.text.strip()
 
-    if not url.startswith("http"):
-        await message.answer("❌ Invalid link.")
-        return
-
-    if "youtube.com" not in url and "youtu.be" not in url:
+    if not url.startswith("http") or ("youtube.com" not in url and "youtu.be" not in url):
         await message.answer("❌ This bot supports only YouTube links.")
         return
 
@@ -94,6 +90,7 @@ async def process_link(message: types.Message):
 
     try:
         mp3_path, title, performer, duration = await download_audio(url)
+
         if os.path.getsize(mp3_path) > 50 * 1024 * 1024:
             await message.answer(translations["file_too_big"][lang])
             os.remove(mp3_path)
@@ -113,8 +110,8 @@ async def process_link(message: types.Message):
         await message.answer(translations["error"][lang].format(str(e)))
 
 async def download_audio(url: str):
-    print("Checking cookies.txt path:", COOKIES_PATH)
-    print("Cookies file exists:", os.path.exists(COOKIES_PATH))
+    if not os.path.exists(COOKIES_PATH):
+        raise FileNotFoundError(f"cookies.txt not found at path: {COOKIES_PATH}")
 
     uid = str(uuid.uuid4())
     download_dir = os.path.join("downloads", uid)
@@ -135,8 +132,7 @@ async def download_audio(url: str):
 
     def run_ydl():
         with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            return info
+            return ydl.extract_info(url, download=True)
 
     loop = asyncio.get_event_loop()
     info = await loop.run_in_executor(None, run_ydl)
