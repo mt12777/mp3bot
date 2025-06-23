@@ -163,7 +163,9 @@ async def download_audio(url: str):
 
     return mp3_path, title, performer, duration
 
+# ✅ Webhook setup with drop_pending_updates=True
 async def on_startup(app):
+    await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_webhook(WEBHOOK_URL)
 
 async def on_shutdown(app):
