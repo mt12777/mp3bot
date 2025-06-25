@@ -12,12 +12,6 @@ from aiogram.exceptions import TelegramForbiddenError
 from yt_dlp import YoutubeDL
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
-# ========================
-# Այստեղ ես տեղադրում ես միջավայրի փոփոխականները
-os.environ["BOT_TOKEN"] = "8042598400:AAE46nuEhOLFVA-I4DqUrKIIW-hd7Q1B5v8"
-os.environ["WEBHOOK_URL"] = "https://mp3bot-2.onrender.com"
-# ========================
-
 API_TOKEN = os.getenv("BOT_TOKEN")
 DOMAIN = os.getenv("WEBHOOK_URL")
 if not API_TOKEN or not DOMAIN:
