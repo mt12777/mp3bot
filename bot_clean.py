@@ -1,28 +1,25 @@
 import os
-import uuid
 import asyncio
 import logging
-from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.exceptions import TelegramForbiddenError
 from yt_dlp import YoutubeDL
+from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
-# Load environment variables or fallback values
-API_TOKEN = os.getenv("BOT_TOKEN", "PASTE_YOUR_BOT_TOKEN_HERE")
-DOMAIN = os.getenv("WEBHOOK_URL")  # Optional
+API_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_DOMAIN = os.getenv("WEBHOOK_URL")  # Քո webhook-ի տիրույթը, օրինակ https://yourdomain.com
+if not API_TOKEN or not WEBHOOK_DOMAIN:
+    raise RuntimeError("Environment variables BOT_TOKEN and WEBHOOK_URL must be set")
 
-USE_WEBHOOK = bool(DOMAIN)
 WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = f"{DOMAIN}{WEBHOOK_PATH}" if DOMAIN else None
+WEBHOOK_URL = WEBHOOK_DOMAIN + WEBHOOK_PATH
 
-bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
-logging.basicConfig(level=logging.INFO)
 
 user_lang = {}
 
@@ -59,8 +56,7 @@ translations = {
     },
 }
 
-COOKIES_PATH = "cookies.txt"
-
+# Հեշտ ֆունկցիա անվտանգ ուղարկելու համար
 async def safe_send(message: types.Message, text=None, **kwargs):
     try:
         if text:
@@ -74,7 +70,7 @@ async def safe_send(message: types.Message, text=None, **kwargs):
 
 @dp.message(Command(commands=["start"]))
 async def start(message: types.Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
+    kb = InlineKeyboardMarkup(inline_keyboard=[[ 
         InlineKeyboardButton(text="🇦🇲 Հայ", callback_data="lang_hy"),
         InlineKeyboardButton(text="🇷🇺 Рус", callback_data="lang_ru"),
         InlineKeyboardButton(text="🇬🇧 Eng", callback_data="lang_en"),
@@ -107,7 +103,7 @@ async def process_link(message: types.Message):
     try:
         mp3_path, title, performer, duration = await download_audio(url)
 
-        if os.path.getsize(mp3_path) > 50 * 1024 * 1024:
+        if os.path.getsize(mp3_path) > 50 * 1024 * 1024:  # Telegram max audio size limit ~50MB
             await safe_send(message, text=translations["file_too_big"][lang])
             os.remove(mp3_path)
             return
@@ -129,9 +125,6 @@ async def process_link(message: types.Message):
         await safe_send(message, text=translations["error"][lang].format(str(e)))
 
 async def download_audio(url: str):
-    if not os.path.exists(COOKIES_PATH):
-        raise FileNotFoundError(f"cookies.txt not found at path: {COOKIES_PATH}")
-
     uid = str(uuid.uuid4())
     download_dir = os.path.join("downloads", uid)
     os.makedirs(download_dir, exist_ok=True)
@@ -141,7 +134,8 @@ async def download_audio(url: str):
         "outtmpl": os.path.join(download_dir, "%(title)s.%(ext)s"),
         "quiet": True,
         "noplaylist": True,
-        "cookies": COOKIES_PATH,
+        # Կիրառել --cookies-from-browser տարբերակը՝ Chrome-ից
+        "cookies_from_browser": ("chrome",),
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
@@ -163,31 +157,21 @@ async def download_audio(url: str):
 
     return mp3_path, title, performer, duration
 
-# Webhook version
-if USE_WEBHOOK:
-    async def on_startup(app):
-        await bot.delete_webhook(drop_pending_updates=True)
-        await bot.set_webhook(WEBHOOK_URL)
+# Webhook setup
+async def on_startup(app):
+    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.set_webhook(WEBHOOK_URL)
 
-    async def on_shutdown(app):
-        await bot.delete_webhook()
+async def on_shutdown(app):
+    await bot.delete_webhook()
 
-    app = web.Application()
-    app.on_startup.append(on_startup)
-    app.on_shutdown.append(on_shutdown)
+app = web.Application()
+app.on_startup.append(on_startup)
+app.on_shutdown.append(on_shutdown)
 
-    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
-    setup_application(app, dp, bot=bot)
+SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
+setup_application(app, dp, bot=bot)
 
-    if __name__ == "__main__":
-        web.run_app(app, port=int(os.getenv("PORT", 8000)))
-
-# Polling fallback
-else:
-    async def main():
-        logging.info("Running in polling mode...")
-        await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot)
-
-    if __name__ == "__main__":
-        asyncio.run(main())
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    web.run_app(app, port=int(os.getenv("PORT", 8000)))
