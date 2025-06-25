@@ -5,8 +5,13 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 
 TOKEN = os.getenv("BOT_TOKEN")
+DOMAIN = os.getenv("WEBHOOK_URL")
+
+if not TOKEN or not DOMAIN:
+    raise RuntimeError("BOT_TOKEN or WEBHOOK_URL environment variables not set")
+
 WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = os.getenv("WEBHOOK_URL") + WEBHOOK_PATH
+WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -16,6 +21,7 @@ async def handle_message(message: types.Message):
     await message.answer("✅ Webhook-ը աշխատում է!")
 
 async def on_startup(app):
+    await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_webhook(WEBHOOK_URL)
 
 async def on_shutdown(app):
