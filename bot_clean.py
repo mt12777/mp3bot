@@ -12,16 +12,17 @@ from aiogram.exceptions import TelegramForbiddenError
 from yt_dlp import YoutubeDL
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
-API_TOKEN = os.getenv("BOT_TOKEN")
-DOMAIN = os.getenv("WEBHOOK_URL")
-if not API_TOKEN or not DOMAIN:
-    raise RuntimeError("BOT_TOKEN or WEBHOOK_URL environment variables not set")
+# Load environment variables or fallback values
+API_TOKEN = os.getenv("BOT_TOKEN", "PASTE_YOUR_BOT_TOKEN_HERE")
+DOMAIN = os.getenv("WEBHOOK_URL")  # Optional
 
+USE_WEBHOOK = bool(DOMAIN)
 WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
+WEBHOOK_URL = f"{DOMAIN}{WEBHOOK_PATH}" if DOMAIN else None
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
+logging.basicConfig(level=logging.INFO)
 
 user_lang = {}
 
@@ -60,7 +61,6 @@ translations = {
 
 COOKIES_PATH = "cookies.txt"
 
-# ✅ Safe send function
 async def safe_send(message: types.Message, text=None, **kwargs):
     try:
         if text:
@@ -163,21 +163,31 @@ async def download_audio(url: str):
 
     return mp3_path, title, performer, duration
 
-# ✅ Webhook setup with drop_pending_updates=True
-async def on_startup(app):
-    await bot.delete_webhook(drop_pending_updates=True)
-    await bot.set_webhook(WEBHOOK_URL)
+# Webhook version
+if USE_WEBHOOK:
+    async def on_startup(app):
+        await bot.delete_webhook(drop_pending_updates=True)
+        await bot.set_webhook(WEBHOOK_URL)
 
-async def on_shutdown(app):
-    await bot.delete_webhook()
+    async def on_shutdown(app):
+        await bot.delete_webhook()
 
-app = web.Application()
-app.on_startup.append(on_startup)
-app.on_shutdown.append(on_shutdown)
+    app = web.Application()
+    app.on_startup.append(on_startup)
+    app.on_shutdown.append(on_shutdown)
 
-SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
-setup_application(app, dp, bot=bot)
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
+    setup_application(app, dp, bot=bot)
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    web.run_app(app, port=int(os.getenv("PORT", 8000)))
+    if __name__ == "__main__":
+        web.run_app(app, port=int(os.getenv("PORT", 8000)))
+
+# Polling fallback
+else:
+    async def main():
+        logging.info("Running in polling mode...")
+        await bot.delete_webhook(drop_pending_updates=True)
+        await dp.start_polling(bot)
+
+    if __name__ == "__main__":
+        asyncio.run(main())
