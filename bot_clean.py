@@ -1,24 +1,29 @@
 import os
+import uuid
 import asyncio
 import logging
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.exceptions import TelegramForbiddenError
 from yt_dlp import YoutubeDL
-from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 API_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_DOMAIN = os.getenv("WEBHOOK_URL")  # Քո webhook-ի տիրույթը, օրինակ https://yourdomain.com
-if not API_TOKEN or not WEBHOOK_DOMAIN:
-    raise RuntimeError("Environment variables BOT_TOKEN and WEBHOOK_URL must be set")
+DOMAIN = os.getenv("WEBHOOK_URL")
+if not API_TOKEN or not DOMAIN:
+    raise RuntimeError("BOT_TOKEN or WEBHOOK_URL environment variables not set")
 
 WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = WEBHOOK_DOMAIN + WEBHOOK_PATH
+WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
 
-bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(
+    token=API_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
 dp = Dispatcher()
 
 user_lang = {}
@@ -56,7 +61,8 @@ translations = {
     },
 }
 
-# Հեշտ ֆունկցիա անվտանգ ուղարկելու համար
+COOKIES_PATH = "cookies.txt"
+
 async def safe_send(message: types.Message, text=None, **kwargs):
     try:
         if text:
@@ -70,7 +76,7 @@ async def safe_send(message: types.Message, text=None, **kwargs):
 
 @dp.message(Command(commands=["start"]))
 async def start(message: types.Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[[ 
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🇦🇲 Հայ", callback_data="lang_hy"),
         InlineKeyboardButton(text="🇷🇺 Рус", callback_data="lang_ru"),
         InlineKeyboardButton(text="🇬🇧 Eng", callback_data="lang_en"),
@@ -103,7 +109,7 @@ async def process_link(message: types.Message):
     try:
         mp3_path, title, performer, duration = await download_audio(url)
 
-        if os.path.getsize(mp3_path) > 50 * 1024 * 1024:  # Telegram max audio size limit ~50MB
+        if os.path.getsize(mp3_path) > 50 * 1024 * 1024:
             await safe_send(message, text=translations["file_too_big"][lang])
             os.remove(mp3_path)
             return
@@ -125,6 +131,9 @@ async def process_link(message: types.Message):
         await safe_send(message, text=translations["error"][lang].format(str(e)))
 
 async def download_audio(url: str):
+    if not os.path.exists(COOKIES_PATH):
+        raise FileNotFoundError(f"cookies.txt not found at path: {COOKIES_PATH}")
+
     uid = str(uuid.uuid4())
     download_dir = os.path.join("downloads", uid)
     os.makedirs(download_dir, exist_ok=True)
@@ -134,8 +143,7 @@ async def download_audio(url: str):
         "outtmpl": os.path.join(download_dir, "%(title)s.%(ext)s"),
         "quiet": True,
         "noplaylist": True,
-        # Կիրառել --cookies-from-browser տարբերակը՝ Chrome-ից
-        "cookies_from_browser": ("chrome",),
+        "cookies": COOKIES_PATH,
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
