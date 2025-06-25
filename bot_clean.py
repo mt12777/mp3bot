@@ -12,7 +12,12 @@ from aiogram.exceptions import TelegramForbiddenError
 from yt_dlp import YoutubeDL
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
-# ─────── ENVIRONMENT ───────
+# ========================
+# Այստեղ ես տեղադրում ես միջավայրի փոփոխականները
+os.environ["BOT_TOKEN"] = "8042598400:AAE46nuEhOLFVA-I4DqUrKIIW-hd7Q1B5v8"
+os.environ["WEBHOOK_URL"] = "https://mp3bot-2.onrender.com"
+# ========================
+
 API_TOKEN = os.getenv("BOT_TOKEN")
 DOMAIN = os.getenv("WEBHOOK_URL")
 if not API_TOKEN or not DOMAIN:
@@ -21,13 +26,14 @@ if not API_TOKEN or not DOMAIN:
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
 
-# ─────── BOT & DISPATCHER ───────
-bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+bot = Bot(
+    token=API_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
 dp = Dispatcher()
-logging.basicConfig(level=logging.INFO)
 
-# ─────── TRANSLATIONS ───────
 user_lang = {}
+
 translations = {
     "choose": {
         "en": "Please choose your language:",
@@ -63,7 +69,6 @@ translations = {
 
 COOKIES_PATH = "cookies.txt"
 
-# ─────── SAFE SEND ───────
 async def safe_send(message: types.Message, text=None, **kwargs):
     try:
         if text:
@@ -75,13 +80,12 @@ async def safe_send(message: types.Message, text=None, **kwargs):
     except Exception as e:
         logging.exception(f"Failed to send message to {message.from_user.id}: {e}")
 
-# ─────── START / LANGUAGE ───────
-@dp.message(Command("start"))
+@dp.message(Command(commands=["start"]))
 async def start(message: types.Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton("🇦🇲 Հայ", callback_data="lang_hy"),
-        InlineKeyboardButton("🇷🇺 Рус", callback_data="lang_ru"),
-        InlineKeyboardButton("🇬🇧 Eng", callback_data="lang_en"),
+    kb = InlineKeyboardMarkup(inline_keyboard=[[ 
+        InlineKeyboardButton(text="🇦🇲 Հայ", callback_data="lang_hy"),
+        InlineKeyboardButton(text="🇷🇺 Рус", callback_data="lang_ru"),
+        InlineKeyboardButton(text="🇬🇧 Eng", callback_data="lang_en"),
     ]])
     await safe_send(message, text=translations["choose"]["en"], reply_markup=kb)
 
@@ -89,11 +93,13 @@ async def start(message: types.Message):
 async def set_language(callback: types.CallbackQuery):
     lang = callback.data.split("_")[1]
     user_lang[callback.from_user.id] = lang
-    await callback.message.edit_reply_markup()
-    await safe_send(callback.message, text=translations["send"][lang])
-    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup()
+        await safe_send(callback.message, text=translations["send"][lang])
+        await callback.answer()
+    except TelegramForbiddenError:
+        logging.warning(f"User {callback.from_user.id} blocked the bot.")
 
-# ─────── LINK PROCESSING ───────
 @dp.message()
 async def process_link(message: types.Message):
     uid = message.from_user.id
@@ -101,7 +107,8 @@ async def process_link(message: types.Message):
     url = message.text.strip()
 
     if not url.startswith("http") or ("youtube.com" not in url and "youtu.be" not in url):
-        return await safe_send(message, text="❌ This bot supports only YouTube links.")
+        await safe_send(message, text="❌ This bot supports only YouTube links.")
+        return
 
     await safe_send(message, text=translations["downloading"][lang])
 
@@ -113,23 +120,25 @@ async def process_link(message: types.Message):
             os.remove(mp3_path)
             return
 
-        await message.answer_audio(
-            audio=FSInputFile(mp3_path),
-            title=title,
-            performer=performer,
-            duration=duration,
-        )
-        await safe_send(message, text=translations["done"][lang])
+        audio = FSInputFile(mp3_path)
+        try:
+            await message.answer_audio(
+                audio=audio,
+                title=title,
+                performer=performer,
+                duration=duration,
+            )
+            await safe_send(message, text=translations["done"][lang])
+        except TelegramForbiddenError:
+            logging.warning(f"User {message.from_user.id} blocked the bot during audio send.")
         os.remove(mp3_path)
-
     except Exception as e:
         logging.exception("Download error")
         await safe_send(message, text=translations["error"][lang].format(str(e)))
 
-# ─────── DOWNLOAD AUDIO ───────
 async def download_audio(url: str):
     if not os.path.exists(COOKIES_PATH):
-        raise FileNotFoundError("cookies.txt not found")
+        raise FileNotFoundError(f"cookies.txt not found at path: {COOKIES_PATH}")
 
     uid = str(uuid.uuid4())
     download_dir = os.path.join("downloads", uid)
@@ -162,7 +171,7 @@ async def download_audio(url: str):
 
     return mp3_path, title, performer, duration
 
-# ─────── WEBHOOK SETUP ───────
+# Webhook setup
 async def on_startup(app):
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_webhook(WEBHOOK_URL)
@@ -178,4 +187,5 @@ SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
 setup_application(app, dp, bot=bot)
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     web.run_app(app, port=int(os.getenv("PORT", 8000)))
