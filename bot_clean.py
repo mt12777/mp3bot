@@ -12,6 +12,13 @@ from aiogram.exceptions import TelegramForbiddenError
 from yt_dlp import YoutubeDL
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
+# Create cookies.txt from environment variable (Render-safe)
+if "COOKIE_CONTENT" in os.environ:
+    with open("cookies.txt", "w", encoding="utf-8") as f:
+        f.write(os.environ["COOKIE_CONTENT"])
+
+COOKIES_PATH = "cookies.txt"
+
 API_TOKEN = os.getenv("BOT_TOKEN")
 DOMAIN = os.getenv("WEBHOOK_URL")
 if not API_TOKEN or not DOMAIN:
@@ -20,10 +27,7 @@ if not API_TOKEN or not DOMAIN:
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
 
-bot = Bot(
-    token=API_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-)
+bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 user_lang = {}
@@ -60,8 +64,6 @@ translations = {
         "ru": "❌ Ошибка: {}",
     },
 }
-
-COOKIES_PATH = "cookies.txt"
 
 async def safe_send(message: types.Message, text=None, **kwargs):
     try:
