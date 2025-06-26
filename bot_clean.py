@@ -12,12 +12,11 @@ from aiogram.exceptions import TelegramForbiddenError
 from yt_dlp import YoutubeDL
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
-# Create cookies.txt from environment variable (Render-safe)
-if "COOKIE_CONTENT" in os.environ:
-    with open("cookies.txt", "w", encoding="utf-8") as f:
-        f.write(os.environ["COOKIE_CONTENT"])
-
-COOKIES_PATH = "cookies.txt"
+# Create cookies.txt from Railway environment variable (safe method)
+COOKIES_PATH = "/tmp/cookies.txt"
+if "COOKIES_TXT_CONTENT" in os.environ:
+    with open(COOKIES_PATH, "w", encoding="utf-8") as f:
+        f.write(os.environ["COOKIES_TXT_CONTENT"])
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 DOMAIN = os.getenv("WEBHOOK_URL")
@@ -137,7 +136,7 @@ async def download_audio(url: str):
         raise FileNotFoundError(f"cookies.txt not found at path: {COOKIES_PATH}")
 
     uid = str(uuid.uuid4())
-    download_dir = os.path.join("downloads", uid)
+    download_dir = os.path.join("/tmp", uid)
     os.makedirs(download_dir, exist_ok=True)
 
     ydl_opts = {
