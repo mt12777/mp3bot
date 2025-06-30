@@ -23,7 +23,7 @@ DOMAIN = os.getenv("WEBHOOK_URL")
 if not API_TOKEN or not DOMAIN:
     raise RuntimeError("BOT_TOKEN or WEBHOOK_URL environment variables not set")
 
-WEBHOOK_PATH = "/webhook"
+WEBHOOK_PATH = "/"
 WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
